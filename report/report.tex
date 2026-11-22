@@ -42,14 +42,14 @@ distributes a limited budget of extra capacity among the servers to reduce conge
 We formulate the manager's problem as a Markov decision process (MDP) over discretised
 server-congestion levels, complete the transition model and termination rule left open
 in the proposal, and build a simulator in which users schedule themselves randomly,
-selfishly (Nash equilibrium of a congestion game) or cooperatively (social optimum).
+selfishly (Nash equilibrium of a congestion game) or cooperatively (a social-cost planner).
 We train a tabular Q-learning manager and compare it with model-based dynamic
 programming (DP) and four baselines. With random users, Q-learning gives the best cost of all implementable
 managers (71.5\% below no allocation, 21.8\% below a uniform split). With strategic users
 (selfish or cooperative), Q-learning and DP stay within 4--11\% of a simple threshold
 heuristic, because the coarse 27-state observation hides the backlog and demand
 information they would need to do better. Selfish routing costs only about 7\% more delay
-than cooperative routing (empirical price of anarchy 1.07), and this stays below 1.07
+than cooperative routing (an empirical price-of-anarchy estimate of 1.07), and this stays at or below 1.07
 when the number of users or the spread of server capacities changes.
 \end{abstract}
 
@@ -69,8 +69,7 @@ decisions influence one another~\cite{avni2020dynamic}, and coordination between
 decisions of different users or machines is a central issue in
 scheduling~\cite{lee2012coordination}. Multi-agent reinforcement learning has also been
 applied to resource allocation in computing and communication systems~\cite{liu2020marl}.
-Users choosing among shared servers form a congestion game, which always has a pure Nash
-equilibrium~\cite{rosenthal1973}. Selfish choices are generally not socially optimal; the
+Users choosing among shared servers form a congestion game~\cite{rosenthal1973}. Selfish choices are generally not socially optimal; the
 ratio between the two is the price of anarchy~\cite{koutsoupias1999}, which has been
 studied extensively for selfish routing~\cite{roughgarden2002}. The manager's sequential
 decision problem is naturally an MDP~\cite{puterman1994}, which can be solved by dynamic
@@ -81,7 +80,7 @@ Our main research question, as stated in the proposal, is: \emph{how do selfish 
 cooperative scheduling behaviours differ under congestion, and can adaptive resource
 allocation reduce the resulting inefficiency?}
 
-Our contributions are: (i)~a fully specified MDP, including an explicit workload/backlog
+Our contributions are: (i)~an MDP formulation over coarse congestion observations, including an explicit workload/backlog
 transition model and a finite-horizon termination rule (Section~\ref{sec:mdp});
 (ii)~an open-source simulator with three user scheduling models
 (Section~\ref{sec:method}); (iii)~Q-learning and DP managers evaluated against
@@ -108,19 +107,21 @@ from sampled transitions without a model~\cite{watkins1992,sutton2018}.
 \paragraph{Congestion game and Nash equilibrium.} Each user $i$ picks a server $a_i$ and
 pays a cost that grows with the total work on that server. An assignment
 $\bm a$ is a \emph{pure Nash equilibrium} if no user can lower its own cost by changing
-server while the others stay put. Congestion games always have such an equilibrium, and
-best-response dynamics reach one~\cite{rosenthal1973}.
+server while the others stay put. Unweighted congestion games always have one~\cite{rosenthal1973};
+in our weighted one-server-per-user setting, best-response dynamics also reach
+one~\cite{evendar2003convergence}.
 
 \paragraph{Social cost and price of anarchy.} The social cost of an assignment is the
 total delay of all users, $SC(\bm a)=\sum_iD_{a_i}(\bm a)$. The social optimum minimises
 $SC$, and the \emph{price of anarchy} is
-$\mathrm{PoA}=SC(\bm a^{\text{NE}})/SC(\bm a^{\text{OPT}})\ge1$~\cite{koutsoupias1999,roughgarden2002}.
-We report an empirical PoA: the average delay under selfish routing divided by that under
-cooperative routing.
+$\mathrm{PoA}=SC(\bm a^{\text{worst NE}})/SC(\bm a^{\text{OPT}})\ge1$~\cite{koutsoupias1999,roughgarden2002}.
+We report an empirical estimate: selfish over cooperative delay without allocation (with a
+manager, we call this a \emph{delay ratio}).
 
 %=====================================================================
 \section{Problem Formulation (MDP)}\label{sec:mdp}
-The manager's problem is the MDP $\mathcal{M}=(\mathcal{S},\mathcal{D},P,R,\gamma)$.
+We model the manager's problem as an MDP $\mathcal{M}=(\mathcal{S},\mathcal{D},P,R,\gamma)$ over
+the observed congestion levels (an approximation, see Section~\ref{sec:env}).
 
 \paragraph{Loads.} User $i$ has workload $L_i$ and selects server $a_i\in\{1,\dots,K\}$.
 Server $j$ has base capacity $C_j$ and carries an unfinished backlog $b_j$ from the
@@ -182,16 +183,15 @@ $\bm x$.
 \item \textbf{Selfish (game-theoretic):} users play a weighted congestion
 game~\cite{rosenthal1973} where user $i$'s cost is $(W_{a_i}/c_{a_i})^\kappa$. We run
 asynchronous best-response dynamics (random user order, warm-started from the previous
-step's assignment) until no user can improve, i.e.\ a pure Nash equilibrium, capped at
-50 rounds.
+step's assignment) until no user can improve, i.e.\ a pure Nash equilibrium at the
+capacities the users observed, capped at 50 rounds.
 \item \textbf{Cooperative:} a planner minimises the social cost
 $\sum_j n_j (W_j/c_j)^\kappa$ ($n_j$ = users on server $j$) by greedy insertion of jobs in
-decreasing size followed by local search over single moves and pairwise swaps.
+decreasing size followed by local search over single moves and pairwise swaps (a
+heuristic, not guaranteed to be optimal).
 \end{itemize}
-Comparing selfish and cooperative delay gives an empirical price of anarchy
-(Section~\ref{sec:prelim}). The planner is a heuristic that optimises each step separately,
-so its delay can only be above the true optimum and the reported price of anarchy is a
-lower estimate.
+Comparing selfish and cooperative delay gives the empirical price-of-anarchy estimate of
+Section~\ref{sec:prelim} (an estimate, not a bound, as the planner is a heuristic).
 
 \subsection{Q-learning manager}
 The tabular agent~\cite{watkins1992} keeps $Q(\bm x,\bm d)$ for all $27\times35$ pairs
@@ -210,8 +210,9 @@ DP needs $P$ and $R$, which are not available in closed form. We therefore use
 episodes, estimate $\hat P(\bm x'\mid\bm x,\bm d)$ by counts and $\hat R(\bm x,\bm d)$ by
 sample means, and solve
 $V(\bm x)=\max_{\bm d}\big[\hat R(\bm x,\bm d)+\gamma\sum_{\bm x'}\hat P(\bm x'\mid\bm x,\bm d)V(\bm x')\big]$
-by value iteration~\cite{puterman1994} (tolerance $10^{-8}$). Unvisited pairs get a
-uniform $\hat P$ and a pessimistic reward (the lowest observed value).
+by value iteration~\cite{puterman1994} (tolerance $10^{-8}$). This stationary equation approximates
+the 50-step episode. Unvisited pairs get a uniform $\hat P$ and a strongly pessimistic
+reward (the smallest reward sum over visited pairs).
 
 \subsection{Baselines}
 \textbf{No allocation} ($\bm d=\bm 0$);
@@ -224,10 +225,10 @@ state alone).
 
 \subsection{Experimental setup}
 Table~\ref{tab:setup} lists the parameters. Every manager is evaluated greedily on the
-same 200 held-out episodes (common random numbers). Q-learning and DP are trained with
-three seeds (0, 1, 2), so their reported means cover 600 episodes (3 seeds $\times$ 200);
-the baselines are deterministic and are evaluated once on the same 200 episodes. All
-means are given $\pm$ a 95\% confidence interval. The main metric is the discounted return
+same 200 held-out episode seeds (for selfish users, workloads diverge once managers act
+differently, as user choices share the random stream). Q-learning and DP are trained with
+seeds 0, 1, 2; per evaluation episode we average the three trained policies, so means and
+95\% confidence intervals are over 200 episodes. The main metric is the discounted return
 $J(\pi)$. We also report the average total user delay per step (equal to $N\cdot D_{\mathrm{avg}}$,
 where $D_{\mathrm{avg}}$ is the average delay per user defined in the proposal) and the
 number of resource units used per step.
@@ -257,9 +258,8 @@ Learning rate & $\alpha=\max(0.01,\,n(\bm x,\bm d)^{-0.6})$ & DP exploration epi
 All sweeps train Q-learning for 3{,}000 instead of 10{,}000 episodes to keep run times
 manageable. At the default setting this costs about 2.4\% of return ($-225.7$ vs.\
 $-220.4$), so part of Q-learning's gap to the threshold rule in the sweeps is due to the
-shorter training. The visit-count learning rate satisfies the Robbins--Monro conditions
-(see~\cite{evendar2003} for such polynomial rates); Section~\ref{sec:alpha} compares it
-with constant rates.
+shorter training. The visit-decayed rate~\cite{evendar2003} is floored at 0.01;
+Section~\ref{sec:alpha} compares it with constant rates.
 
 %=====================================================================
 \section{Results}\label{sec:results}
@@ -268,7 +268,7 @@ Figure~\ref{fig:curves} shows the training return. In all three user models the 
 improves steadily while $\epsilon$ decays and levels off after about 6{,}000 episodes, once
 exploration reaches its floor. Averaged over seeds, the 200-episode return improves from
 $-607$ to $-315$ with random users, from $-401$ to $-242$ with selfish users, and from
-$-365$ to $-242$ with cooperative users. The shaded bands (standard deviation over seeds)
+$-365$ to $-241$ with cooperative users. The shaded bands (standard deviation over seeds)
 are narrow, so training is stable. Value iteration for DP converged in about 400 sweeps.
 The random-exploration data covered 83--95\% of the $945$ state--action pairs.
 
@@ -298,9 +298,7 @@ Manager & Discounted return $J$ ($\uparrow$) & Delay / step ($\downarrow$) & Uni
 \midrule
 \input{../results/table_main.tex}
 \end{tabular}
-\caption{Evaluation results ($\pm$ 95\% CI). Q-learning and DP: 600 episodes (3 seeds
-$\times$ 200); baselines are deterministic and use the same 200 episodes. Bold: best
-implementable manager (the myopic oracle sees exact loads and serves only as a reference).}
+\caption{Evaluation results ($\pm$ 95\% CI over 200 episodes). Bold: best implementable manager (the myopic oracle sees exact loads and serves only as a reference).}
 \label{tab:main}
 \end{table}
 
@@ -313,9 +311,9 @@ implementable manager (the myopic oracle sees exact loads and serves only as a r
 
 \begin{itemize}
 \item \textbf{Allocating capacity matters.} With no allocation, backlogs build up and the
-cost is 2.6--3.5 times higher than with any reasonable manager.
+cost is 2.5--3.5 times higher than with any reasonable manager.
 \item \textbf{Random users:} Q-learning ($-297.1$) is the best implementable manager. It
-beats DP ($-299.6$, within the CI), the threshold rule ($-312.9$, 5.0\% better) and uniform
+beats DP ($-299.6$, within the CI), the threshold rule ($-312.9$, 5.1\% better) and uniform
 allocation ($-380.1$, 21.8\% better), and it is 11\% worse than the full-information myopic
 oracle. Random routing leaves large, persistent imbalances, so learning where congestion
 tends to stay pays off.
@@ -335,10 +333,10 @@ where the users' response to the previous allocation makes $\hat P$ less accurat
 
 \subsection{Effect of user behaviour (price of anarchy)}
 Figure~\ref{fig:poa} compares per-step delay across user models. Without allocation, the
-selfish Nash routing has delay 32.68 against 30.63 for the cooperative optimum, an
-empirical price of anarchy of $1.07$. Random routing is $1.88\times$ worse. With a manager
-the gap shrinks further, to $1.02$ (threshold) and $1.04$ (Q-learning): extra capacity
-absorbs most of the inefficiency of selfish behaviour. In this congestion game,
+selfish Nash routing has delay 32.68 against 30.63 for the cooperative planner, an
+empirical price-of-anarchy estimate of $1.07$. Random routing is $1.88\times$ worse. With a
+manager the delay ratio falls to $1.02$ (threshold) and $1.04$ (Q-learning), though not with
+DP ($1.12$): a well-chosen allocation absorbs most of the inefficiency of selfishness. In this congestion game,
 coordinating the users is therefore much less valuable than coordinating the capacity.
 This is consistent with the known result that selfish routing is often close to optimal
 in congestion settings~\cite{roughgarden2002}.
@@ -373,7 +371,8 @@ Figure~\ref{fig:budget} varies $B$ (selfish users). The cost drops steeply up to
 (Q-learning: $576\to226$, $-61\%$), with diminishing returns after that. Q-learning matches
 the threshold rule for $B\le1$ but falls behind as $B$ grows (9.5\% worse at $B=2$). At
 $B=6$ its cost even rises slightly ($241.6$), because the action space grows from 35 to 84
-actions ($2{,}268$ state--action pairs), which 3{,}000 training episodes cannot cover.
+actions ($2{,}268$ state--action pairs); 3{,}000 training episodes visit them all, but many
+only a few times, so their values stay noisy.
 Tabular Q-learning scales poorly with the action space.
 
 
@@ -386,8 +385,8 @@ constant $0.1$ ($-228.4$), while rates that are too small ($0.05$: $-274$), deca
 
 The learned policies (full table in the repository) send capacity to the small, congested
 servers: in the most common state $(2,2,2)$ both Q-learning and DP choose $(2,2,0)$, since
-the large server gains the least from $\eta=2$ extra capacity. They differ only in lightly
-loaded states, where almost any allocation clears the congestion.
+the large server gains the least from $\eta=2$ extra capacity. They also agree in $(2,1,1)$
+but differ in other states, e.g.\ $(2,2,1)$, where DP chooses $(4,0,0)$.
 
 \subsection{Number of users and server heterogeneity}\label{sec:extra}
 Two questions planned in the proposal remain. Is the small price of anarchy a property of
@@ -404,12 +403,12 @@ only the 27 congestion states.
 \toprule
 & \multicolumn{2}{c}{Delay per user $D_{\mathrm{avg}}$} & & \multicolumn{3}{c}{Discounted return $J$}\\
 \cmidrule(lr){2-3}\cmidrule(l){5-7}
-Setting & No alloc. & Q-learning & PoA & Q-learning & Threshold & Q vs.\ threshold\\
+Setting & No alloc. & Q-learning & PoA est. & Q-learning & Threshold & Q vs.\ threshold\\
 \midrule
 \input{../results/table_extra.tex}
 \end{tabular}
 \caption{Selfish users, varying the number of users (top) and the capacity spread
-(bottom; homogeneous $(6.7,6.7,6.7)$, moderate $(4,6,10)$, strong $(2,4,14)$). PoA:
+(bottom; homogeneous $(6.7,6.7,6.7)$, moderate $(4,6,10)$, strong $(2,4,14)$). PoA est.:
 no-allocation delay of selfish over cooperative routing. Last column: relative return of
 Q-learning against the threshold rule (positive = Q-learning better). The rows $N=12$ and
 ``Moderate'' are the default setting.}
@@ -431,14 +430,14 @@ congestion: the loss comes from too little capacity, not from how users route. T
 where the manager matters most. At $N\ge12$ it removes 52--73\% of the per-user delay, and
 at $N=18$ every manager spends almost the full budget, so the remaining delay is limited by
 $B$ (Section~\ref{sec:budget}). The only setting where Q-learning beats the threshold rule is $N=6$
-($+8.8\%$): congestion is so light that the best action is to spend nothing. Q-learning
-learns this, like the myopic oracle, while the threshold rule still spends 0.37 units per
-step. For $N\ge9$ it trails the threshold rule by 7--23\%, as in Section~\ref{sec:compare}: the same 27
+($+8.8\%$): congestion is so light that spending rarely pays. Q-learning spends nothing and
+the myopic oracle almost nothing (0.0002 units per step), while the threshold rule still
+spends 0.37. For $N\ge9$ it trails the threshold rule by 7--23\%, as in Section~\ref{sec:compare}: the same 27
 states now have to describe very different load levels.
 
 \paragraph{Server heterogeneity.} At equal total capacity, the spread of the capacities
 hardly matters. The price of anarchy (1.05--1.07), the no-allocation delay (2.66--2.76 per
-user) and the gap between Q-learning and the threshold rule (11--13\%) are almost the same
+user) and the gap between Q-learning and the threshold rule (10.8--12.5\%) are almost the same
 for all three server sets. Selfish users move to servers roughly in proportion to their
 capacity, so the system absorbs the spread through user behaviour. This is the same
 balancing effect that keeps the price of anarchy small, and it explains why total capacity
@@ -447,8 +446,8 @@ and load, rather than heterogeneity, drive performance in this model.
 \subsection{Discussion and limitations}
 The main limitation is the \emph{state abstraction}. Three congestion levels per server
 hide the backlog size and the demand regime, so the problem is really partially observed.
-A hand-designed rule that encodes ``boost the small busy servers'' is already near-optimal
-for balanced (strategic) traffic, and Section~\ref{sec:extra} shows this holds across loads
+A hand-designed rule that encodes ``boost the small busy servers'' already comes close to
+the myopic oracle for balanced (strategic) traffic, and Section~\ref{sec:extra} shows this holds across loads
 and capacity spreads. Learning helps most when the traffic pattern is
 persistent and uninformed (random users). Natural extensions are a finer state
 (previous allocation, backlog bins), function approximation (DQN) for larger $K$ and $B$,
@@ -457,7 +456,7 @@ and users that also learn (a Stackelberg/multi-agent RL problem).
 %=====================================================================
 \section{Contribution}
 \begin{center}\small
-\begin{tabular}{@{}p{2.9cm}p{8.6cm}c@{}}
+\begin{tabular}{@{}p{2.7cm}p{11.4cm}c@{}}
 \toprule
 Member & Assigned task (from proposal) and delivered work & Fulfilled\\
 \midrule
@@ -466,7 +465,7 @@ cost, best-response dynamics to a Nash equilibrium (\texttt{scheduling.py}), pri
 analysis. & Yes\\
 Kushal Kumar & Cooperative scheduling formulation and overall problem setup: MDP
 specification, completed transition model and termination rule, simulator
-(\texttt{env.py}), social-optimum planner. & Yes\\
+(\texttt{env.py}), cooperative social-cost planner. & Yes\\
 Vishawraj Meena & Q-learning and dynamic-programming implementation: tabular Q-learning,
 certainty-equivalent DP / value iteration, baselines (\texttt{agents.py}). & Yes\\
 Tejas Prasad & Experimental design, evaluation metrics and parameter analysis: evaluation
@@ -484,17 +483,16 @@ Tabular Q-learning and model-based DP both learn sensible allocation policies th
 cost by 60--72\% relative to no allocation. Q-learning is the best implementable manager
 when users route randomly. With strategic users, a simple threshold rule remains
 competitive, because coarse congestion levels hide the information needed to do
-better. Selfish routing turned out to be nearly efficient (price of anarchy $\approx1.07$),
-and capacity allocation reduces the remaining gap further. This holds for 6 to 18 users
-and for equal or very unequal servers: in this model, the main source of delay is
-too little capacity, not selfish behaviour.
+better. Selfish routing is nearly efficient (price-of-anarchy estimate $\approx1.07$) for 6 to 18
+users and equal or unequal servers, and a well-chosen allocation narrows the gap further:
+the main source of delay is too little capacity, not selfish behaviour.
 
 \paragraph{Code and reproducibility.} All results in this report are produced by
 \texttt{experiments/run\_all.py} (and \texttt{run\_all.py -{}-extra} for
 Section~\ref{sec:extra}), followed by \texttt{experiments/make\_figures.py} (fixed seeds) in our repository: \url{https://github.com/kus-coded/compute-scheduling-rl}.
 
-{\small
-\setlength{\bibsep}{1pt}
+{\footnotesize
+\setlength{\bibsep}{0pt}
 \begin{thebibliography}{9}
 \bibitem[Rosenthal(1973)]{rosenthal1973}
 R.~W. Rosenthal.
@@ -547,6 +545,12 @@ C.~J. C.~H. Watkins and P.~Dayan.
 R.~S. Sutton and A.~G. Barto.
 \newblock \emph{Reinforcement Learning: An Introduction}.
 \newblock MIT Press, 2nd edition, 2018.
+
+\bibitem[Even-Dar et~al.(2003)]{evendar2003convergence}
+E.~Even-Dar, A.~Kesselman, and Y.~Mansour.
+\newblock Convergence time to {N}ash equilibria.
+\newblock In \emph{Proc.\ 30th International Colloquium on Automata, Languages and
+  Programming (ICALP)}, LNCS 2719, pages 502--513. Springer, 2003.
 
 \bibitem[Even-Dar and Mansour(2003)]{evendar2003}
 E.~Even-Dar and Y.~Mansour.

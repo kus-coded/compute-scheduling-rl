@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import time
 from dataclasses import replace
 from multiprocessing import Pool
@@ -29,6 +30,11 @@ def ci95(x):
 
 def summary(m):
     return {k: [float(v.mean()), ci95(v)] for k, v in m.items()}
+
+
+def pooled(runs):
+    raw = {k: np.mean([r["eval_raw"][k] for r in runs], axis=0) for k in ("return", "delay", "units")}
+    return summary(raw)
 
 
 def train_q(args):
@@ -105,8 +111,7 @@ def run_main(a):
     for i, pol in enumerate(POLICIES):
         tab = dict(bl_res[i])
         for name, runs in (("Q-learning", qp[pol]), ("DP (value iteration)", dpp[pol])):
-            raw = {k: np.concatenate([r["eval_raw"][k] for r in runs]) for k in ("return", "delay", "units")}
-            tab[name] = summary(raw)
+            tab[name] = pooled(runs)
             tab[name]["per_seed_return"] = [r["eval"]["return"][0] for r in runs]
         main_tab[pol] = tab
     results["main"] = main_tab
@@ -114,14 +119,10 @@ def run_main(a):
                           for pol in POLICIES}
     results["curves"] = {pol: [r["curve"] for r in qp[pol]] for pol in POLICIES}
 
-    def agg(runs):
-        raw = {k: np.concatenate([r["eval_raw"][k] for r in runs]) for k in ("return", "delay", "units")}
-        return summary(raw)
-
-    results["lambda_sweep"] = {str(l): agg(r) for l, r in by(lam_res, lams).items()}
-    results["budget_sweep"] = {str(b): {"Q-learning": agg(r), **B_bl[i]}
+    results["lambda_sweep"] = {str(l): pooled(r) for l, r in by(lam_res, lams).items()}
+    results["budget_sweep"] = {str(b): {"Q-learning": pooled(r), **B_bl[i]}
                                for i, (b, r) in enumerate(by(B_res, Bs).items())}
-    results["alpha_sweep"] = {str(al): agg(r) | {"final_train_return":
+    results["alpha_sweep"] = {str(al): pooled(r) | {"final_train_return":
                               float(np.mean([np.mean(x["curve"][-200:]) for x in r]))}
                               for al, r in by(a_res, alphas).items()}
 
@@ -147,11 +148,6 @@ CAPS = {"homogeneous": (20 / 3, 20 / 3, 20 / 3),
         "strong": (2.0, 4.0, 14.0)}
 
 
-def agg_runs(runs):
-    raw = {k: np.concatenate([r["eval_raw"][k] for r in runs]) for k in ("return", "delay", "units")}
-    return summary(raw)
-
-
 def run_extra(a):
     N_EP = 60 if a.quick else 3000
     N_EVAL = 20 if a.quick else 200
@@ -172,7 +168,7 @@ def run_extra(a):
            "N_sweep": {}, "cap_sweep": {}}
     n = len(SEEDS)
     for i, (kind, key, cfg) in enumerate(settings):
-        entry = {"Q-learning": agg_runs(q_res[i * n:(i + 1) * n]), **bl_res[i],
+        entry = {"Q-learning": pooled(q_res[i * n:(i + 1) * n]), **bl_res[i],
                  "coop_no_alloc": co_res[i]["No allocation"],
                  "coop_threshold": co_res[i]["Threshold heuristic"],
                  "N": cfg.N}
@@ -189,6 +185,10 @@ def main():
     p.add_argument("--extra", action="store_true")
     p.add_argument("--workers", type=int, default=os.cpu_count())
     a = p.parse_args()
+    if a.quick:
+        global RES
+        RES = tempfile.mkdtemp(prefix="quick_")
+        print("quick run: results written to", RES)
     if a.extra:
         run_extra(a)
     else:
