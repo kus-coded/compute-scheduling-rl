@@ -78,7 +78,11 @@ Q-learning~\cite{watkins1992,sutton2018} when it is not.
 
 Our main research question, as stated in the proposal, is: \emph{how do selfish and
 cooperative scheduling behaviours differ under congestion, and can adaptive resource
-allocation reduce the resulting inefficiency?}
+allocation reduce the resulting inefficiency?} The manager knows the capacities, the
+budget and the cost $\lambda$, but not the transition model, the users' rule, the backlog
+or the demand regime, so it must learn from interaction. We consider the study successful
+if a learned manager clearly beats no allocation and a uniform split and comes close to a
+full-information reference, and if it quantifies how much selfish routing costs.
 
 Our contributions are: (i)~an MDP formulation over coarse congestion observations, including an explicit workload/backlog
 transition model and a finite-horizon termination rule (Section~\ref{sec:mdp});
