@@ -166,7 +166,8 @@ pt.append(r"\bottomrule")
 open(os.path.join(RES, "table_policy.tex"), "w").write("\n".join(pt) + "\n")
 
 # plain-text summary (also rendered as a screenshot for the README)
-txt = ["Mean discounted return over 600 evaluation episodes (3 seeds x 200), +/- 95% CI", ""]
+txt = ["Mean discounted return +/- 95% CI. Q-learning and DP: 600 episodes (3 seeds x 200);",
+       "baselines (deterministic): the same 200 evaluation episodes", ""]
 for pol in POL:
     txt.append(f"[{POL_LBL[pol]} users]")
     txt.append(f"  {'manager':<16}{'return':>18}{'delay/step':>12}{'units/step':>12}")
