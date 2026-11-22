@@ -1,0 +1,186 @@
+"""Build every figure and LaTeX table in the report from results/results.json."""
+from __future__ import annotations
+
+import json
+import os
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RES = os.path.join(ROOT, "results")
+FIG = os.path.join(RES, "figures")
+os.makedirs(FIG, exist_ok=True)
+R = json.load(open(os.path.join(RES, "results.json")))
+
+# validated categorical palette (fixed order, never cycled)
+PAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
+INK, MUTED, GRID = "#1f1f1e", "#6b6a63", "#e4e3de"
+plt.rcParams.update({
+    "font.size": 9, "axes.edgecolor": MUTED, "axes.labelcolor": INK, "xtick.color": MUTED,
+    "ytick.color": MUTED, "axes.spines.top": False, "axes.spines.right": False,
+    "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.6, "axes.axisbelow": True,
+    "legend.frameon": False, "pdf.fonttype": 42, "lines.linewidth": 2, "savefig.bbox": "tight", "savefig.dpi": 200,
+})
+POL = ["random", "selfish", "cooperative"]
+POL_LBL = {"random": "Random", "selfish": "Selfish (Nash)", "cooperative": "Cooperative"}
+MGR = ["No allocation", "Uniform (full budget)", "Threshold heuristic",
+       "DP (value iteration)", "Q-learning", "Myopic oracle (exact loads)"]
+MGR_SHORT = {"No allocation": "No alloc.", "Uniform (full budget)": "Uniform",
+             "Threshold heuristic": "Threshold", "DP (value iteration)": "DP",
+             "Q-learning": "Q-learning", "Myopic oracle (exact loads)": "Myopic oracle"}
+
+
+def save(fig, name):
+    fig.savefig(os.path.join(FIG, name + ".pdf"))
+    fig.savefig(os.path.join(FIG, name + ".png"))
+    plt.close(fig)
+
+
+def smooth(x, w=200):
+    x = np.asarray(x)
+    c = np.cumsum(np.insert(x, 0, 0.0))
+    return (c[w:] - c[:-w]) / w
+
+
+# ---------------------------------------------------------------- Fig 1: learning curves
+fig, ax = plt.subplots(figsize=(5.2, 2.9))
+for i, pol in enumerate(POL):
+    W_ = min(200, len(R["curves"][pol][0]) // 5)
+    curves = np.array([smooth(c, W_) for c in R["curves"][pol]])
+    m, s = curves.mean(0), curves.std(0)
+    x = np.arange(len(m)) + W_
+    ax.plot(x, m, color=PAL[i], label=POL_LBL[pol])
+    ax.fill_between(x, m - s, m + s, color=PAL[i], alpha=0.15, linewidth=0)
+ax.set_xlabel("Training episode")
+ax.set_ylabel("Discounted return (200-ep. avg)")
+ax.legend(loc="lower right")
+ax.set_xlim(0, len(m) + W_)
+save(fig, "learning_curves")
+
+# ---------------------------------------------------------------- Fig 2: comparison bars
+fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.7), sharey=True)
+for k, pol in enumerate(POL):
+    ax = axes[k]
+    tab = R["main"][pol]
+    vals = [-tab[m]["return"][0] for m in MGR]
+    errs = [tab[m]["return"][1] for m in MGR]
+    bars = ax.bar(range(len(MGR)), vals, yerr=errs, color=PAL, width=0.8,
+                  edgecolor="white", linewidth=1, error_kw=dict(ecolor=MUTED, lw=1, capsize=2))
+    for b, v, er in zip(bars, vals, errs):
+        ax.text(b.get_x() + b.get_width() / 2, v + er + max(vals) * 0.02, f"{v:.0f}",
+                ha="center", fontsize=6.5, color=INK)
+    ax.set_xticks(range(len(MGR)))
+    ax.set_xticklabels([MGR_SHORT[m] for m in MGR], rotation=55, ha="right", fontsize=7)
+    ax.set_title(POL_LBL[pol] + " users", fontsize=9, color=INK)
+    ax.grid(axis="x", visible=False)
+axes[0].set_ylabel("Discounted cost  (−return, lower is better)")
+save(fig, "comparison")
+
+# ---------------------------------------------------------------- Fig 3: lambda sweep (two panels, no dual axis)
+lams = sorted(R["lambda_sweep"], key=float)
+lv = [float(l) for l in lams]
+fig, axes = plt.subplots(1, 2, figsize=(6.4, 2.5))
+for ax, key, lbl in ((axes[0], "delay", "Avg. total delay / step"),
+                     (axes[1], "units", "Avg. resource units / step")):
+    m = [R["lambda_sweep"][l][key][0] for l in lams]
+    e = [R["lambda_sweep"][l][key][1] for l in lams]
+    ax.errorbar(range(len(lv)), m, yerr=e, color=PAL[0], marker="o", ms=5, capsize=2)
+    ax.set_xticks(range(len(lv)))
+    ax.set_xticklabels([f"{v:g}" for v in lv])
+    ax.set_xlabel(r"Resource cost $\lambda$")
+    ax.set_ylabel(lbl)
+save(fig, "lambda_sweep")
+
+# ---------------------------------------------------------------- Fig 4: budget sweep
+Bs = sorted(R["budget_sweep"], key=int)
+fig, ax = plt.subplots(figsize=(5.2, 2.8))
+order = ["No allocation", "Uniform (full budget)", "Threshold heuristic", "Q-learning",
+         "Myopic oracle (exact loads)"]
+cidx = {m: MGR.index(m) for m in order}
+for m in order:
+    y = [-R["budget_sweep"][b][m]["return"][0] for b in Bs]
+    ax.plot([int(b) for b in Bs], y, color=PAL[cidx[m]], marker="o", ms=4, label=MGR_SHORT[m])
+ax.set_yscale("log")
+ax.set_xlabel("Budget $B$ (extra units per step)")
+ax.set_ylabel("Discounted cost (log scale)")
+ax.legend(fontsize=7, ncol=2)
+save(fig, "budget_sweep")
+
+# ---------------------------------------------------------------- Fig 5: price of anarchy
+fig, ax = plt.subplots(figsize=(5.2, 2.6))
+mgrs = ["No allocation", "Threshold heuristic", "Q-learning"]
+w = 0.26
+for i, pol in enumerate(POL):
+    y = [R["main"][pol][m]["delay"][0] for m in mgrs]
+    e = [R["main"][pol][m]["delay"][1] for m in mgrs]
+    xs = np.arange(len(mgrs)) + (i - 1) * w
+    bars = ax.bar(xs, y, w * 0.92, yerr=e, color=PAL[i], label=POL_LBL[pol],
+                  error_kw=dict(ecolor=MUTED, lw=1, capsize=2))
+    for b, v, er in zip(bars, y, e):
+        ax.text(b.get_x() + b.get_width() / 2, v + er + 0.8, f"{v:.1f}", ha="center", fontsize=6.5, color=INK)
+ax.set_xticks(range(len(mgrs)))
+ax.set_xticklabels([MGR_SHORT[m] for m in mgrs])
+ax.set_ylabel("Avg. total user delay / step")
+ax.legend(fontsize=7)
+ax.grid(axis="x", visible=False)
+save(fig, "user_policies")
+
+# ---------------------------------------------------------------- Fig 6: alpha sensitivity
+al = list(R["alpha_sweep"])
+fig, ax = plt.subplots(figsize=(3.4, 2.4))
+y = [-R["alpha_sweep"][a]["return"][0] for a in al]
+e = [R["alpha_sweep"][a]["return"][1] for a in al]
+ax.errorbar(range(len(al)), y, yerr=e, color=PAL[0], marker="o", ms=5, capsize=2, linestyle="none")
+ax.axvline(2.5, color=GRID, lw=1)
+ax.set_xticks(range(len(al)))
+ax.set_xticklabels([a.replace("const ", "") if a.startswith("const") else "$n^{-%s}$" % a.split("^")[1] for a in al], fontsize=7)
+ax.set_xlabel(r"Learning rate $\alpha$ (constant, or visit-decayed $n^{-\omega}$)")
+ax.set_ylabel("Discounted cost")
+save(fig, "alpha_sweep")
+
+# ---------------------------------------------------------------- LaTeX tables
+lines = []
+for pol in POL:
+    tab = R["main"][pol]
+    lines.append(r"\textit{" + POL_LBL[pol] + r" users} & & &\\")
+    best = max((m for m in MGR if m != "Myopic oracle (exact loads)"),
+               key=lambda m: tab[m]["return"][0])
+    for m in MGR:
+        r_, d_, u_ = tab[m]["return"], tab[m]["delay"], tab[m]["units"]
+        ret = f"{r_[0]:.1f} $\\pm$ {r_[1]:.1f}"
+        if m == best:
+            ret = r"\textbf{" + ret + "}"
+        lines.append(f"\\quad {MGR_SHORT[m]} & {ret} & {d_[0]:.2f} & {u_[0]:.2f}\\\\")
+    lines.append(r"\midrule")
+lines[-1] = r"\bottomrule"
+open(os.path.join(RES, "table_main.tex"), "w").write("\n".join(lines) + "\n")
+
+pt = []
+for row in R["policy_table"][:8]:
+    pt.append(f"({','.join(map(str, row['state']))}) & {row['visits']} & "
+              f"({','.join(map(str, row['q_action']))}) & ({','.join(map(str, row['dp_action']))})\\\\")
+pt.append(r"\bottomrule")
+open(os.path.join(RES, "table_policy.tex"), "w").write("\n".join(pt) + "\n")
+
+# plain-text summary (also rendered as a screenshot for the README)
+txt = ["Mean discounted return over 600 evaluation episodes (3 seeds x 200), +/- 95% CI", ""]
+for pol in POL:
+    txt.append(f"[{POL_LBL[pol]} users]")
+    txt.append(f"  {'manager':<16}{'return':>18}{'delay/step':>12}{'units/step':>12}")
+    for m in MGR:
+        t = R["main"][pol][m]
+        txt.append(f"  {MGR_SHORT[m]:<16}{t['return'][0]:>10.1f} +/- {t['return'][1]:<5.1f}"
+                   f"{t['delay'][0]:>11.2f}{t['units'][0]:>12.2f}")
+    txt.append("")
+open(os.path.join(RES, "summary.txt"), "w").write("\n".join(txt))
+print("\n".join(txt))
+
+fig = plt.figure(figsize=(7.2, 0.17 * len(txt) + 0.3))
+fig.patch.set_facecolor("#1f1f1e")
+fig.text(0.02, 0.98, "$ python experiments/make_figures.py\n" + "\n".join(txt), family="monospace",
+         fontsize=8, color="#f0efec", va="top")
+fig.savefig(os.path.join(ROOT, "screenshots", "results_summary.png"), dpi=170, facecolor=fig.get_facecolor())
+plt.close(fig)

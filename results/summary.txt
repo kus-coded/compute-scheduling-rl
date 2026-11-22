@@ -1,0 +1,28 @@
+Mean discounted return over 600 evaluation episodes (3 seeds x 200), +/- 95% CI
+
+[Random users]
+  manager                     return  delay/step  units/step
+  No alloc.          -1042.8 +/- 39.2       57.73        0.00
+  Uniform             -380.1 +/- 13.7       16.76        4.00
+  Threshold           -312.9 +/- 11.1       13.99        3.03
+  DP                  -299.6 +/- 5.9        12.67        3.62
+  Q-learning          -297.1 +/- 5.6        12.41        3.75
+  Myopic oracle       -267.6 +/- 9.1        11.20        3.42
+
+[Selfish (Nash) users]
+  manager                     return  delay/step  units/step
+  No alloc.           -576.0 +/- 31.6       32.68        0.00
+  Uniform             -209.2 +/- 5.1         7.29        4.00
+  Threshold           -200.8 +/- 5.7         8.26        2.57
+  DP                  -223.2 +/- 4.0         8.68        3.29
+  Q-learning          -220.4 +/- 3.3         8.48        3.43
+  Myopic oracle       -199.0 +/- 5.3         8.23        2.53
+
+[Cooperative users]
+  manager                     return  delay/step  units/step
+  No alloc.           -547.4 +/- 33.5       30.63        0.00
+  Uniform             -207.2 +/- 5.5         7.14        4.00
+  Threshold           -202.0 +/- 6.3         8.10        2.70
+  DP                  -210.7 +/- 3.6         7.77        3.52
+  Q-learning          -217.6 +/- 3.6         8.19        3.42
+  Myopic oracle       -195.3 +/- 6.0         8.24        2.29
