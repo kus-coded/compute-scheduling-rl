@@ -46,6 +46,7 @@ for m, (lbl, col) in MGR.items():
     y = [-R["N_sweep"][n][m]["return"][0] for n in Ns]
     ax.plot([int(n) for n in Ns], y, color=col, marker="o", ms=4, label=lbl)
 ax.set_yscale("log")
+ax.set_xticks([int(n) for n in Ns])
 ax.set_xlabel("Number of users $N$")
 ax.set_ylabel("Discounted cost (log scale)")
 ax.set_title("(a) Number of users", fontsize=9, color=INK)
@@ -62,6 +63,7 @@ ax.set_xticks(range(len(caps)))
 ax.set_xticklabels([CAP_LBL[c] for c in caps], fontsize=7)
 ax.set_ylabel("Discounted cost")
 ax.set_title("(b) Server heterogeneity (total capacity 20)", fontsize=9, color=INK)
+ax.set_ylim(bottom=0)
 ax.grid(axis="x", visible=False)
 save(fig, "scale_heterogeneity")
 

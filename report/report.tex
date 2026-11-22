@@ -49,10 +49,10 @@ managers (71.5\% below no allocation, 21.8\% below a uniform split). With strate
 (selfish or cooperative), Q-learning and DP stay within 4--11\% of a simple threshold
 heuristic, because the coarse 27-state observation hides the backlog and demand
 information they would need to do better. Selfish routing costs only about 7\% more delay
-than cooperative routing (empirical price of anarchy 1.07).
+than cooperative routing (empirical price of anarchy 1.07), and this stays below 1.07
+when the number of users or the spread of server capacities changes.
 \end{abstract}
 
-\keywords{Congestion games \and Price of anarchy \and Markov decision processes \and Q-learning \and Dynamic programming \and Resource allocation}
 
 %=====================================================================
 \section{Introduction}
@@ -85,29 +85,11 @@ Our contributions are: (i)~a fully specified MDP, including an explicit workload
 transition model and a finite-horizon termination rule (Section~\ref{sec:mdp});
 (ii)~an open-source simulator with three user scheduling models
 (Section~\ref{sec:method}); (iii)~Q-learning and DP managers evaluated against
-baselines and an oracle, with sweeps over the cost weight $\lambda$, the budget $B$ and
-the learning rate (Section~\ref{sec:results}).
+baselines and an oracle, with sweeps over the cost weight $\lambda$, the budget $B$, the
+number of users and the spread of server capacities (Section~\ref{sec:results}).
 
 %=====================================================================
 \section{Preliminaries}\label{sec:prelim}
-
-\paragraph{Notation.} Table~\ref{tab:notation} lists the symbols used throughout.
-\begin{table}[h]
-\centering\small
-\begin{tabular}{@{}ll@{\hspace{2em}}ll@{}}
-\toprule
-$N$, $K$ & number of users, servers & $L_i$ & workload of user $i$\\
-$a_i\in\{1,\dots,K\}$ & server chosen by user $i$ & $C_j$ & base capacity of server $j$\\
-$b_j$ & backlog carried by server $j$ & $W_j$ & total work at server $j$\\
-$d_j$ & extra units given to server $j$ & $\eta$ & capacity per extra unit\\
-$B$ & budget (units per step) & $\Ct_j=C_j+\eta d_j$ & effective capacity\\
-$\kappa$ & delay exponent & $\lambda$ & cost per resource unit\\
-$\tau_1<\tau_2$ & congestion thresholds & $T$, $\gamma$ & horizon, discount factor\\
-\bottomrule
-\end{tabular}
-\caption{Notation.}
-\label{tab:notation}
-\end{table}
 
 \paragraph{Markov decision process.} An MDP is a tuple $(\mathcal S,\mathcal A,P,R,\gamma)$
 with states $\mathcal S$, actions $\mathcal A$, transition probabilities
@@ -140,8 +122,11 @@ cooperative routing.
 \section{Problem Formulation (MDP)}\label{sec:mdp}
 The manager's problem is the MDP $\mathcal{M}=(\mathcal{S},\mathcal{D},P,R,\gamma)$.
 
-\paragraph{Loads.} $W_j(\bm a)=b_j+\sum_{i}L_i\,\mathbb 1(a_i=j)$ and
-$\Ct_j=C_j+\eta d_j$.
+\paragraph{Loads.} User $i$ has workload $L_i$ and selects server $a_i\in\{1,\dots,K\}$.
+Server $j$ has base capacity $C_j$ and carries an unfinished backlog $b_j$ from the
+previous step, so its total work is
+$W_j(\bm a)=b_j+\sum_{i}L_i\,\mathbb 1(a_i=j)$.
+Allocating $d_j$ extra units gives effective capacity $\Ct_j=C_j+\eta d_j$.
 
 \paragraph{State.} The manager observes the normalised load $z_j=W_j/C_j$ \emph{before}
 allocating, discretised with thresholds $\tau_1<\tau_2$ into
@@ -208,24 +193,14 @@ Comparing selfish and cooperative delay gives an empirical price of anarchy
 
 \subsection{Q-learning manager}
 The tabular agent~\cite{watkins1992} keeps $Q(\bm x,\bm d)$ for all $27\times35$ pairs
-and is trained with $\epsilon$-greedy exploration (Algorithm~\ref{alg:q}); $\epsilon$
+and is trained with $\epsilon$-greedy exploration; $\epsilon$
 decays linearly from 1 to 0.05 over the first 60\% of episodes. Ties in $\arg\max$ are
 broken at random.
-\begin{algorithm}[h]
-\caption{Q-learning resource manager}\label{alg:q}
-\begin{algorithmic}[1]
-\State $Q(\bm x,\bm d)\gets0$ for all $\bm x\in\mathcal S,\bm d\in\mathcal D$
-\For{episode $e=1,\dots,E$}
-  \State $\bm x_0\gets$ \textsc{Reset}(); $\epsilon\gets\epsilon(e)$
-  \For{$t=0,\dots,T-1$}
-    \State $\bm d_t\gets$ random action w.p.\ $\epsilon$, else $\arg\max_{\bm d}Q(\bm x_t,\bm d)$
-    \State $(\bm x_{t+1},R_t)\gets$ \textsc{Step}$(\bm d_t)$
-    \State $y\gets R_t$ if $t=T-1$ else $R_t+\gamma\max_{\bm d'}Q(\bm x_{t+1},\bm d')$
-    \State $Q(\bm x_t,\bm d_t)\gets(1-\alpha)Q(\bm x_t,\bm d_t)+\alpha\,y$
-  \EndFor
-\EndFor
-\end{algorithmic}
-\end{algorithm}
+After each transition the agent applies the update
+\[
+Q(\bm x_t,\bm d_t)\leftarrow(1-\alpha)\,Q(\bm x_t,\bm d_t)+\alpha\big[R_t+\gamma\max_{\bm d'}Q(\bm x_{t+1},\bm d')\big],
+\]
+with target $R_t$ alone at the last step $t=T-1$.
 
 \subsection{Dynamic programming manager}
 DP needs $P$ and $R$, which are not available in closed form. We therefore use
@@ -263,7 +238,7 @@ model $P$ has no closed form, so DP uses an estimated model (certainty-equivalen
 instead of serving as an exact benchmark; the myopic oracle, which sees exact loads, is
 used as the reference policy instead of $\mathrm{Gap}(\pi)$.
 
-\begin{table}[h]
+\begin{table}[t]
 \centering\small
 \begin{tabular}{@{}ll@{\hspace{2em}}ll@{}}
 \toprule
@@ -295,18 +270,25 @@ $-365$ to $-242$ with cooperative users. The shaded bands (standard deviation ov
 are narrow, so training is stable. Value iteration for DP converged in about 400 sweeps.
 The random-exploration data covered 83--95\% of the $945$ state--action pairs.
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
-\includegraphics[width=0.72\linewidth]{../results/figures/learning_curves.pdf}
+\begin{minipage}[b]{0.4\linewidth}\centering
+\includegraphics[width=\linewidth]{../results/figures/learning_curves.pdf}
 \caption{Q-learning training return (200-episode moving average; band = $\pm1$ s.d.\ over
-3 seeds). Training returns include $\epsilon$-greedy exploration.}
+3 seeds, including $\epsilon$-greedy exploration).}
 \label{fig:curves}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.56\linewidth}\centering
+\includegraphics[width=\linewidth]{../results/figures/lambda_sweep.pdf}
+\caption{Effect of the resource cost $\lambda$ on delay (left) and resources used (right).}
+\label{fig:lam}
+\end{minipage}
 \end{figure}
 
-\subsection{Comparison of resource managers}
+\subsection{Comparison of resource managers}\label{sec:compare}
 Table~\ref{tab:main} and Figure~\ref{fig:cmp} compare all managers.
 
-\begin{table}[h]
+\begin{table}[t]
 \centering\small
 \begin{tabular}{@{}lccc@{}}
 \toprule
@@ -320,9 +302,9 @@ implementable manager (the myopic oracle sees exact loads and serves only as a r
 \label{tab:main}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{../results/figures/comparison.pdf}
+\includegraphics[width=0.8\linewidth]{../results/figures/comparison.pdf}
 \caption{Discounted cost ($-J$, lower is better) of every manager under each user model.}
 \label{fig:cmp}
 \end{figure}
@@ -359,11 +341,18 @@ coordinating the users is therefore much less valuable than coordinating the cap
 This is consistent with the known result that selfish routing is often close to optimal
 in congestion settings~\cite{roughgarden2002}.
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
-\includegraphics[width=0.66\linewidth]{../results/figures/user_policies.pdf}
+\begin{minipage}[b]{0.49\linewidth}\centering
+\includegraphics[width=\linewidth]{../results/figures/user_policies.pdf}
 \caption{Average total user delay per step for each user model under three managers.}
 \label{fig:poa}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.46\linewidth}\centering
+\includegraphics[width=\linewidth]{../results/figures/budget_sweep.pdf}
+\caption{Discounted cost vs.\ budget $B$ (log scale).}
+\label{fig:budget}
+\end{minipage}
 \end{figure}
 
 \subsection{\texorpdfstring{Delay--resource trade-off ($\lambda$)}{Delay-resource trade-off (lambda)}}
@@ -375,14 +364,9 @@ around 3.3 units: congestion relief still outweighs the cost. At $\lambda=8$ usa
 but the response is close to a step: the marginal delay saved by a unit at a congested
 server is large, so the agent only cuts spending once $\lambda$ is very high.
 
-\begin{figure}[h]
-\centering
-\includegraphics[width=0.8\linewidth]{../results/figures/lambda_sweep.pdf}
-\caption{Effect of the resource cost $\lambda$ on delay (left) and resources used (right).}
-\label{fig:lam}
-\end{figure}
 
-\subsection{\texorpdfstring{Effect of the budget $B$}{Effect of the budget B}}
+
+\subsection{\texorpdfstring{Effect of the budget $B$}{Effect of the budget B}}\label{sec:budget}
 Figure~\ref{fig:budget} varies $B$ (selfish users). The cost drops steeply up to $B=4$
 (Q-learning: $576\to226$, $-61\%$), with diminishing returns after that. Q-learning matches
 the threshold rule for $B\le1$ but falls behind as $B$ grows (9.5\% worse at $B=2$). At
@@ -390,54 +374,85 @@ $B=6$ its cost even rises slightly ($241.6$), because the action space grows fro
 actions ($2{,}268$ state--action pairs), which 3{,}000 training episodes cannot cover.
 Tabular Q-learning scales poorly with the action space.
 
-\begin{figure}[h]
+
+
+\subsection{Learning rate and learned policy}\label{sec:alpha}
+A learning-rate sweep (selfish users, 3{,}000 episodes; figure in the repository) confirms
+the choice of $\alpha$: the visit-decayed $n^{-0.6}$ is best ($-225.7$), slightly ahead of a
+constant $0.1$ ($-228.4$), while rates that are too small ($0.05$: $-274$), decay too fast
+($n^{-0.8}$: $-280$) or are too large ($0.3$: $-252$) do worse.
+
+The learned policies are interpretable (the full table of greedy actions is in the
+repository). Both learners send capacity to the small, congested servers: in the most
+common state $(2,2,2)$ both choose $(2,2,0)$, because the large server (capacity 10) gains
+the least from $\eta=2$ extra capacity. Q-learning and DP agree on the two most visited
+states and differ only in lightly loaded ones, where almost any allocation clears the
+congestion.
+
+\subsection{Number of users and server heterogeneity}\label{sec:extra}
+Two questions remain from the results above. Is the small price of anarchy a property of
+our particular setting, and does the threshold rule's lead under strategic users depend on
+how unequal the servers are? Both were planned in the proposal. We repeat the selfish-user
+experiment (Q-learning with 3{,}000 episodes and 3 seeds, as in the other sweeps) for
+$N\in\{6,9,12,15,18\}$, and for three server sets with the same total capacity of 20 but
+different spreads (Table~\ref{tab:extra}, Figure~\ref{fig:extra}). The manager still observes
+only the 27 congestion states.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+& \multicolumn{2}{c}{Delay per user $D_{\mathrm{avg}}$} & & \multicolumn{3}{c}{Discounted return $J$}\\
+\cmidrule(lr){2-3}\cmidrule(l){5-7}
+Setting & No alloc. & Q-learning & PoA & Q-learning & Threshold & Q vs.\ threshold\\
+\midrule
+\input{../results/table_extra.tex}
+\end{tabular}
+\caption{Selfish users, varying the number of users (top) and the capacity spread
+(bottom; homogeneous $(6.7,6.7,6.7)$, moderate $(4,6,10)$, strong $(2,4,14)$). PoA:
+no-allocation delay of selfish over cooperative routing. Last column: relative return of
+Q-learning against the threshold rule (positive = Q-learning better). The rows $N=12$ and
+``Moderate'' are the default setting.}
+\label{tab:extra}
+\end{table}
+
+\begin{figure}[t]
 \centering
-\begin{minipage}{0.55\linewidth}\centering
-\includegraphics[width=\linewidth]{../results/figures/budget_sweep.pdf}
-\caption{Discounted cost vs.\ budget $B$ (log scale).}
-\label{fig:budget}
-\end{minipage}\hfill
-\begin{minipage}{0.42\linewidth}\centering
-\includegraphics[width=\linewidth]{../results/figures/alpha_sweep.pdf}
-\caption{Learning-rate sensitivity (3{,}000 episodes).}
-\label{fig:alpha}
-\end{minipage}
+\includegraphics[width=0.7\linewidth]{../results/figures/scale_heterogeneity.pdf}
+\caption{Discounted cost vs.\ number of users (a, log scale) and capacity spread (b);
+colours as in (a).}
+\label{fig:extra}
 \end{figure}
 
-\subsection{Learning-rate sensitivity and learned policy}\label{sec:alpha}
-Figure~\ref{fig:alpha} compares learning rates (selfish users, 3{,}000 episodes). The
-visit-decayed $n^{-0.6}$ is best ($-225.7$), slightly ahead of a constant $0.1$
-($-228.4$). Learning rates that are too small ($0.05$) or decay too fast ($n^{-0.8}$) learn
-too slowly ($-274$ and $-280$), and a large constant $0.3$ is noisy ($-252$).
+\paragraph{Number of users.} Without allocation, the delay per user rises more than
+20-fold from $N=6$ to $N=18$ (0.30 to 6.43) as the fixed capacity saturates, yet the price
+of anarchy stays between 1.00 and 1.07. Selfishness therefore stays cheap even under heavy
+congestion: the loss comes from too little capacity, not from how users route. This is also
+where the manager matters most. At $N\ge12$ it removes 52--73\% of the per-user delay, and
+at $N=18$ every manager spends almost the full budget, so the remaining delay is limited by
+$B$ (Section~\ref{sec:budget}). The only setting where Q-learning beats the threshold rule is $N=6$
+($+8.8\%$): congestion is so light that the best action is to spend nothing. Q-learning
+learns this, like the myopic oracle, while the threshold rule still spends 0.37 units per
+step. For $N\ge9$ it trails the threshold rule by 7--23\%, as in Section~\ref{sec:compare}: the same 27
+states now have to describe very different load levels.
 
-Table~\ref{tab:policy} lists the greedy actions for the most visited states. Both
-learners send capacity to the small, congested servers. In the most common state
-$(2,2,2)$, both choose $(2,2,0)$: the large server (capacity 10) gains the least from
-$\eta=2$ extra capacity. The two methods agree on the two most visited states. In lightly
-loaded states their choices differ, because almost any allocation clears the congestion
-there, so the value differences between actions are small and noisy.
-
-\begin{table}[h]
-\centering\small
-\begin{tabular}{@{}cccc@{}}
-\toprule
-State $\bm x$ & Visits & Q-learning $\bm d$ & DP $\bm d$\\
-\midrule
-\input{../results/table_policy.tex}
-\end{tabular}
-\caption{Greedy actions in the 8 most visited states (selfish users, seed 0).}
-\label{tab:policy}
-\end{table}
+\paragraph{Server heterogeneity.} At equal total capacity, the spread of the capacities
+hardly matters. The price of anarchy (1.05--1.07), the no-allocation delay (2.66--2.76 per
+user) and the gap between Q-learning and the threshold rule (11--13\%) are almost the same
+for all three server sets. Selfish users move to servers roughly in proportion to their
+capacity, so the system absorbs the spread through user behaviour. This is the same
+balancing effect that keeps the price of anarchy small, and it explains why total capacity
+and load, rather than heterogeneity, drive performance in this model.
 
 \subsection{Discussion and limitations}
 The main limitation is the \emph{state abstraction}. Three congestion levels per server
 hide the backlog size and the demand regime, so the problem is really partially observed.
 A hand-designed rule that encodes ``boost the small busy servers'' is already near-optimal
-for balanced (strategic) traffic. Learning helps most when the traffic pattern is
+for balanced (strategic) traffic, and Section~\ref{sec:extra} shows this holds across loads
+and capacity spreads. Learning helps most when the traffic pattern is
 persistent and uninformed (random users). Natural extensions are a finer state
-(including the previous allocation and backlog bins), function approximation (DQN) to
-handle larger $K$ and $B$, and modelling users that also learn, which turns the problem
-into a Stackelberg/multi-agent RL problem.
+(previous allocation, backlog bins), function approximation (DQN) for larger $K$ and $B$,
+and users that also learn (a Stackelberg/multi-agent RL problem).
 
 %=====================================================================
 \section{Contribution}
@@ -455,29 +470,31 @@ specification, completed transition model and termination rule, simulator
 Vishawraj Meena & Q-learning and dynamic-programming implementation: tabular Q-learning,
 certainty-equivalent DP / value iteration, baselines (\texttt{agents.py}). & Yes\\
 Tejas Prasad & Experimental design, evaluation metrics and parameter analysis: evaluation
-protocol, $\lambda$/$B$/$\alpha$ sweeps, figures and tables (\texttt{experiments/}). & Yes\\
+protocol, $\lambda$/$B$/$\alpha$ sweeps, number-of-users and heterogeneity sweeps, figures
+and tables (\texttt{experiments/}). & Yes\\
 \bottomrule
 \end{tabular}
 \end{center}
 \vspace{-0.6em}
-\noindent All members contributed to the implementation, the experiments, the discussion
-of results and the preparation of this report.
+\noindent All members contributed to the implementation, experiments and report.
 
 %=====================================================================
 \section{Conclusion}
-We fully specified the congestion-control MDP, including the transition model and the
-termination rule, and built a simulator with random, selfish and cooperative users.
 Tabular Q-learning and model-based DP both learn sensible allocation policies that cut
 cost by 60--72\% relative to no allocation. Q-learning is the best implementable manager
 when users route randomly. With strategic users, a simple threshold rule remains
 competitive, because coarse congestion levels hide the information needed to do
 better. Selfish routing turned out to be nearly efficient (price of anarchy $\approx1.07$),
-and capacity allocation reduces the remaining gap further.
+and capacity allocation reduces the remaining gap further. This holds for 6 to 18 users
+and for equal or very unequal servers: in this model, the main source of delay is
+too little capacity, not selfish behaviour.
 
 \paragraph{Code and reproducibility.} All results in this report are produced by
-\texttt{experiments/run\_all.py} followed by \texttt{experiments/make\_figures.py}
-(fixed seeds) in our repository: \url{https://github.com/kus-coded/compute-scheduling-rl}.
+\texttt{experiments/run\_all.py} and \texttt{experiments/run\_extra.py}, followed by
+\texttt{make\_figures.py} and \texttt{make\_figures\_extra.py} (fixed seeds) in our repository: \url{https://github.com/kus-coded/compute-scheduling-rl}.
 
+{\small
+\setlength{\bibsep}{1pt}
 \begin{thebibliography}{9}
 \bibitem[Rosenthal(1973)]{rosenthal1973}
 R.~W. Rosenthal.
@@ -535,6 +552,6 @@ R.~S. Sutton and A.~G. Barto.
 E.~Even-Dar and Y.~Mansour.
 \newblock Learning rates for {Q}-learning.
 \newblock \emph{Journal of Machine Learning Research}, 5:1--25, 2003.
-\end{thebibliography}
+\end{thebibliography}}
 
 \end{document}
