@@ -1,4 +1,5 @@
-Mean discounted return over 600 evaluation episodes (3 seeds x 200), +/- 95% CI
+Mean discounted return +/- 95% CI. Q-learning and DP: 600 episodes (3 seeds x 200);
+baselines (deterministic): the same 200 evaluation episodes
 
 [Random users]
   manager                     return  delay/step  units/step

@@ -28,10 +28,12 @@ src/
   scheduling.py   user behaviour: random, selfish (best-response → Nash), cooperative (social optimum)
   agents.py       Q-learning, certainty-equivalent DP, baselines, evaluation
 experiments/
-  run_all.py      runs every experiment → results/results.json
-  make_figures.py builds all figures + LaTeX tables from results.json
+  run_all.py      runs the main experiments → results/results.json
+                  (--extra: number-of-users and heterogeneity sweeps → results/results_extra.json)
+  make_figures.py builds all figures + LaTeX tables from the results files
 results/
-  results.json    raw numbers used in the report
+  results.json    raw numbers used in the report (main experiments)
+  results_extra.json  raw numbers for the number-of-users and heterogeneity sweeps
   summary.txt     main comparison table (plain text)
   table_*.tex     tables included in the report
   figures/        all plots (PDF + PNG)
@@ -43,12 +45,13 @@ screenshots/      screenshots of the results
 
 ```bash
 pip install -r requirements.txt
-python experiments/run_all.py          # full run (~30 min on 2 cores, uses all CPU cores)
-python experiments/make_figures.py     # figures, tables, summary
+python experiments/run_all.py          # main experiments (~30 min on 2 cores, uses all CPU cores)
+python experiments/run_all.py --extra  # number-of-users and heterogeneity sweeps (~5 min)
+python experiments/make_figures.py     # all figures, tables and the summary
 cd report && pdflatex report.tex       # rebuild the report
 ```
 
-`python experiments/run_all.py --quick` does a fast smoke test (under a minute). All runs
+Adding `--quick` to either `run_all.py` command does a fast smoke test (under a minute). All runs
 use fixed seeds: training uses seeds 0, 1, 2, and evaluation uses 200 held-out episodes
 with common random numbers, so every manager sees exactly the same workloads.
 
@@ -76,4 +79,9 @@ first 60% of episodes, learning rate α = max(0.01, n(s,a)^−0.6). DP: model es
 |---|---|
 | ![](results/figures/budget_sweep.png) | ![](results/figures/alpha_sweep.png) |
 
-See Section 4 of the report for the discussion.
+| Number of users and server heterogeneity |
+|---|
+| ![](results/figures/scale_heterogeneity.png) |
+
+Greedy actions of the learned policies are in [`results/table_policy.tex`](results/table_policy.tex).
+See Section 5 of the report for the discussion.

@@ -1,14 +1,3 @@
-"""User-side scheduling rules: how the N users pick servers.
-
-* random      - every user picks a server uniformly at random.
-* selfish     - users play a congestion game; best-response dynamics are run
-                until a pure Nash equilibrium is reached (or a round limit).
-                Each user minimises its own delay ((b_j + W_j)/c_j)^kappa.
-* cooperative - a central planner minimises the total delay
-                sum_i D_{a_i} = sum_j n_j ((b_j + W_j)/c_j)^kappa
-                using greedy largest-job-first insertion + local search
-                (single moves and pairwise swaps).
-"""
 from __future__ import annotations
 
 import numpy as np
@@ -51,7 +40,6 @@ def cooperative(L, backlog, cap, kappa, rng, init=None, max_iter=50):
     a = np.zeros(N, dtype=int)
     W = backlog.astype(float).copy()
     n = np.zeros(K)
-    # greedy: biggest jobs first, each to the server with least marginal social cost
     for i in np.argsort(-L):
         base = np.sum(n * _server_delay(W, cap, kappa))
         best, best_c = 0, np.inf
@@ -62,15 +50,14 @@ def cooperative(L, backlog, cap, kappa, rng, init=None, max_iter=50):
             if c < best_c:
                 best, best_c = j, c
         a[i] = best; W[best] += L[i]; n[best] += 1
-    # local search with incremental cost (only two servers change per move)
     a = a.tolist(); W = W.tolist(); n = n.tolist(); c_ = list(cap); Ls = list(L)
 
-    def sc(j, w, m):          # contribution of server j with work w and m users
+    def sc(j, w, m):
         return m * (w / c_[j]) ** kappa
 
     for _ in range(max_iter):
         improved = False
-        for i in range(N):                                   # single moves
+        for i in range(N):
             p = a[i]
             for j in range(K):
                 if j == p:
@@ -80,7 +67,7 @@ def cooperative(L, backlog, cap, kappa, rng, init=None, max_iter=50):
                 if after < before - 1e-12:
                     W[p] -= Ls[i]; n[p] -= 1; W[j] += Ls[i]; n[j] += 1
                     a[i] = j; p = j; improved = True
-        for i in range(N):                                   # pairwise swaps
+        for i in range(N):
             for k in range(i + 1, N):
                 p, q = a[i], a[k]
                 if p == q:

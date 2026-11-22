@@ -1,9 +1,3 @@
-"""Run every experiment reported in the paper and save raw results + figures.
-
-Usage:  python experiments/run_all.py            (full run, ~10-15 min on 4 cores)
-        python experiments/run_all.py --quick    (smoke test)
-Outputs go to results/ (JSON/CSV) and results/figures/ (PDF + PNG).
-"""
 from __future__ import annotations
 
 import argparse
@@ -19,8 +13,8 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from env import CongestionEnv, EnvConfig, index_state  # noqa: E402
-from agents import (QLearningAgent, DPAgent, NoAlloc, Uniform, Threshold,  # noqa: E402
+from env import CongestionEnv, EnvConfig, index_state
+from agents import (QLearningAgent, DPAgent, NoAlloc, Uniform, Threshold,
                     MyopicOracle, evaluate)
 
 RES = os.path.join(ROOT, "results")
@@ -37,7 +31,6 @@ def summary(m):
     return {k: [float(v.mean()), ci95(v)] for k, v in m.items()}
 
 
-# ---------------------------------------------------------------- workers
 def train_q(args):
     cfg, n_ep, seed, alpha, n_eval = args[:5]
     omega = args[5] if len(args) > 5 else 0.6
@@ -68,16 +61,11 @@ def run_baselines(args):
     return out
 
 
-# ---------------------------------------------------------------- main
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--quick", action="store_true")
-    p.add_argument("--workers", type=int, default=os.cpu_count())
-    a = p.parse_args()
-    N_EP = 100 if a.quick else 10000           # Q-learning training episodes (main)
-    N_EP_SWEEP = 60 if a.quick else 3000       # training episodes in sweeps
-    N_DP = 50 if a.quick else 1500             # exploration episodes for DP model
-    N_EVAL = 20 if a.quick else 200            # evaluation episodes
+def run_main(a):
+    N_EP = 100 if a.quick else 10000
+    N_EP_SWEEP = 60 if a.quick else 3000
+    N_DP = 50 if a.quick else 1500
+    N_EVAL = 20 if a.quick else 200
     os.makedirs(os.path.join(RES, "figures"), exist_ok=True)
     base = EnvConfig()
     t0 = time.time()
@@ -87,7 +75,6 @@ def main():
                                 seeds=SEEDS)}
 
     with Pool(a.workers) as pool:
-        # ---- E1/E2: main comparison for each user scheduling rule
         q_jobs = [(replace(base, user_policy=pol), N_EP, s, "visit", N_EVAL) for pol in POLICIES for s in SEEDS]
         dp_jobs = [(replace(base, user_policy=pol), N_DP, s, N_EVAL) for pol in POLICIES for s in SEEDS]
         bl_jobs = [(replace(base, user_policy=pol), N_EVAL) for pol in POLICIES]
@@ -95,16 +82,13 @@ def main():
         dp_res = pool.map_async(run_dp, dp_jobs)
         bl_res = pool.map_async(run_baselines, bl_jobs)
 
-        # ---- E3: lambda sweep (selfish users)
         lams = [0.0, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
         lam_jobs = [(replace(base, lam=l), N_EP_SWEEP, s, "visit", N_EVAL) for l in lams for s in SEEDS]
         lam_res = pool.map_async(train_q, lam_jobs)
-        # ---- E4: budget sweep (selfish users)
         Bs = [0, 1, 2, 3, 4, 6]
         B_jobs = [(replace(base, B=b), N_EP_SWEEP, s, "visit", N_EVAL) for b in Bs for s in SEEDS]
         B_res = pool.map_async(train_q, B_jobs)
         B_bl = pool.map_async(run_baselines, [(replace(base, B=b), N_EVAL) for b in Bs])
-        # ---- E5: learning-rate sensitivity (selfish users)
         alpha_cfgs = [(0.05, 0.6), (0.1, 0.6), (0.3, 0.6), ("visit", 0.5), ("visit", 0.6), ("visit", 0.8)]
         alphas = [f"const {al}" if al != "visit" else f"1/n^{om}" for al, om in alpha_cfgs]
         a_jobs = [(base, N_EP_SWEEP, s, al, N_EVAL, om) for al, om in alpha_cfgs for s in SEEDS]
@@ -141,7 +125,6 @@ def main():
                               float(np.mean([np.mean(x["curve"][-200:]) for x in r]))}
                               for al, r in by(a_res, alphas).items()}
 
-    # learned greedy policy (selfish, seed 0) for the most visited states
     env = CongestionEnv(base)
     Q, visits = qp["selfish"][0]["Q"], qp["selfish"][0]["visits"]
     sv = visits.sum(axis=1)
@@ -156,6 +139,60 @@ def main():
     with open(os.path.join(RES, "results.json"), "w") as f:
         json.dump(results, f, indent=1)
     print(f"done in {results['runtime_sec']:.0f}s")
+
+
+NS = [6, 9, 12, 15, 18]
+CAPS = {"homogeneous": (20 / 3, 20 / 3, 20 / 3),
+        "moderate": (4.0, 6.0, 10.0),
+        "strong": (2.0, 4.0, 14.0)}
+
+
+def agg_runs(runs):
+    raw = {k: np.concatenate([r["eval_raw"][k] for r in runs]) for k in ("return", "delay", "units")}
+    return summary(raw)
+
+
+def run_extra(a):
+    N_EP = 60 if a.quick else 3000
+    N_EVAL = 20 if a.quick else 200
+    base = EnvConfig()
+    t0 = time.time()
+    settings = [("N", str(n), replace(base, N=n)) for n in NS] + \
+               [("C", name, replace(base, C=c)) for name, c in CAPS.items()]
+    with Pool(a.workers) as pool:
+        q_jobs = [(cfg, N_EP, s, "visit", N_EVAL) for _, _, cfg in settings for s in SEEDS]
+        bl_jobs = [(cfg, N_EVAL) for _, _, cfg in settings]
+        coop_jobs = [(replace(cfg, user_policy="cooperative"), N_EVAL) for _, _, cfg in settings]
+        q_res = pool.map_async(train_q, q_jobs)
+        bl_res = pool.map_async(run_baselines, bl_jobs)
+        co_res = pool.map_async(run_baselines, coop_jobs)
+        q_res, bl_res, co_res = q_res.get(), bl_res.get(), co_res.get()
+    out = {"settings": dict(N_EP=N_EP, N_EVAL=N_EVAL, seeds=SEEDS, Ns=NS,
+                            capacities={k: list(v) for k, v in CAPS.items()}),
+           "N_sweep": {}, "cap_sweep": {}}
+    n = len(SEEDS)
+    for i, (kind, key, cfg) in enumerate(settings):
+        entry = {"Q-learning": agg_runs(q_res[i * n:(i + 1) * n]), **bl_res[i],
+                 "coop_no_alloc": co_res[i]["No allocation"],
+                 "coop_threshold": co_res[i]["Threshold heuristic"],
+                 "N": cfg.N}
+        out["N_sweep" if kind == "N" else "cap_sweep"][key] = entry
+    out["runtime_sec"] = time.time() - t0
+    with open(os.path.join(RES, "results_extra.json"), "w") as f:
+        json.dump(out, f, indent=1)
+    print(f"done in {out['runtime_sec']:.0f}s")
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--quick", action="store_true")
+    p.add_argument("--extra", action="store_true")
+    p.add_argument("--workers", type=int, default=os.cpu_count())
+    a = p.parse_args()
+    if a.extra:
+        run_extra(a)
+    else:
+        run_main(a)
 
 
 if __name__ == "__main__":
