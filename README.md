@@ -25,7 +25,7 @@ The final report is in [`report/report.pdf`](report/report.pdf).
 ```
 src/
   env.py          congestion environment (state, action space, reward, transitions)
-  scheduling.py   user behaviour: random, selfish (best-response → Nash), cooperative (social optimum)
+  scheduling.py   user behaviour: random, selfish (best-response → Nash), cooperative (heuristic social-cost planner)
   agents.py       Q-learning, certainty-equivalent DP, baselines, evaluation
 experiments/
   run_all.py      runs the main experiments → results/results.json
@@ -48,12 +48,15 @@ pip install -r requirements.txt
 python experiments/run_all.py          # main experiments (~30 min on 2 cores, uses all CPU cores)
 python experiments/run_all.py --extra  # number-of-users and heterogeneity sweeps (~5 min)
 python experiments/make_figures.py     # all figures, tables and the summary
-cd report && pdflatex report.tex       # rebuild the report
+cd report && pdflatex report.tex && pdflatex report.tex   # rebuild the report (two passes)
 ```
 
-Adding `--quick` to either `run_all.py` command does a fast smoke test (under a minute). All runs
-use fixed seeds: training uses seeds 0, 1, 2, and evaluation uses 200 held-out episodes
-with common random numbers, so every manager sees exactly the same workloads.
+Adding `--quick` to either `run_all.py` command does a fast smoke test (under a minute); it
+writes to a temporary folder, so the committed results are never overwritten. All runs use
+fixed seeds: training uses seeds 0, 1, 2, and every manager is evaluated on the same 200
+held-out episode seeds (with selfish users, workloads diverge once managers act differently).
+Q-learning and DP results average the three trained policies per episode, so all 95%
+confidence intervals are over 200 episodes.
 
 ## Default parameters
 

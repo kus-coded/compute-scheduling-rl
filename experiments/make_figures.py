@@ -156,8 +156,8 @@ for row in R["policy_table"][:8]:
 pt.append(r"\bottomrule")
 open(os.path.join(RES, "table_policy.tex"), "w").write("\n".join(pt) + "\n")
 
-txt = ["Mean discounted return +/- 95% CI. Q-learning and DP: 600 episodes (3 seeds x 200);",
-       "baselines (deterministic): the same 200 evaluation episodes", ""]
+txt = ["Mean discounted return +/- 95% CI over 200 evaluation episodes",
+       "(Q-learning and DP: three trained policies averaged per episode)", ""]
 for pol in POL:
     txt.append(f"[{POL_LBL[pol]} users]")
     txt.append(f"  {'manager':<16}{'return':>18}{'delay/step':>12}{'units/step':>12}")
