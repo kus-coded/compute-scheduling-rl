@@ -189,7 +189,9 @@ $\sum_j n_j (W_j/c_j)^\kappa$ ($n_j$ = users on server $j$) by greedy insertion 
 decreasing size followed by local search over single moves and pairwise swaps.
 \end{itemize}
 Comparing selfish and cooperative delay gives an empirical price of anarchy
-(Section~\ref{sec:prelim}).
+(Section~\ref{sec:prelim}). The planner is a heuristic that optimises each step separately,
+so its delay can only be above the true optimum and the reported price of anarchy is a
+lower estimate.
 
 \subsection{Q-learning manager}
 The tabular agent~\cite{watkins1992} keeps $Q(\bm x,\bm d)$ for all $27\times35$ pairs
@@ -229,14 +231,12 @@ means are given $\pm$ a 95\% confidence interval. The main metric is the discoun
 $J(\pi)$. We also report the average total user delay per step (equal to $N\cdot D_{\mathrm{avg}}$,
 where $D_{\mathrm{avg}}$ is the average delay per user defined in the proposal) and the
 number of resource units used per step.
-\paragraph{Changes from the proposal.} (i)~The user utility
-$U_i=V_i-\beta_iD_{a_i}-c_{a_i}$ was simplified to pure delay ($V_i=0$, $\beta_i=1$,
-$c_j=0$), so selfish users minimise their own delay and total welfare equals minus the
-total delay. (ii)~The congestion-greedy allocation became the threshold heuristic above,
-which also gives units to the most congested servers first. (iii)~The true transition
-model $P$ has no closed form, so DP uses an estimated model (certainty-equivalent DP)
-instead of serving as an exact benchmark; the myopic oracle, which sees exact loads, is
-used as the reference policy instead of $\mathrm{Gap}(\pi)$.
+\paragraph{Changes from the proposal.} (i)~The utility
+$U_i=V_i-\beta_iD_{a_i}-c_{a_i}$ is simplified to pure delay ($V_i=0$, $\beta_i=1$,
+$c_j=0$), so total welfare is minus the total delay. (ii)~Congestion-greedy allocation
+became the threshold heuristic, which also serves the most congested servers first.
+(iii)~$P$ has no closed form, so DP uses an estimated model rather than being an exact
+benchmark, and the myopic oracle replaces $\mathrm{Gap}(\pi)$ as the reference.
 
 \begin{table}[t]
 \centering\small
@@ -254,10 +254,12 @@ Learning rate & $\alpha=\max(0.01,\,n(\bm x,\bm d)^{-0.6})$ & DP exploration epi
 \caption{Default experimental parameters (sweeps vary one parameter at a time).}
 \label{tab:setup}
 \end{table}
-The visit-count learning rate satisfies the Robbins--Monro conditions; polynomial rates
-of this form are analysed in~\cite{evendar2003}. We chose it after a constant
-$\alpha=0.1$ with 3{,}000 episodes did worse than the heuristics; the sensitivity study in
-Section~\ref{sec:alpha} compares both.
+All sweeps train Q-learning for 3{,}000 instead of 10{,}000 episodes to keep run times
+manageable. At the default setting this costs about 2.4\% of return ($-225.7$ vs.\
+$-220.4$), so part of Q-learning's gap to the threshold rule in the sweeps is due to the
+shorter training. The visit-count learning rate satisfies the Robbins--Monro conditions
+(see~\cite{evendar2003} for such polynomial rates); Section~\ref{sec:alpha} compares it
+with constant rates.
 
 %=====================================================================
 \section{Results}\label{sec:results}
@@ -382,17 +384,15 @@ the choice of $\alpha$: the visit-decayed $n^{-0.6}$ is best ($-225.7$), slightl
 constant $0.1$ ($-228.4$), while rates that are too small ($0.05$: $-274$), decay too fast
 ($n^{-0.8}$: $-280$) or are too large ($0.3$: $-252$) do worse.
 
-The learned policies are interpretable (the full table of greedy actions is in the
-repository). Both learners send capacity to the small, congested servers: in the most
-common state $(2,2,2)$ both choose $(2,2,0)$, because the large server (capacity 10) gains
-the least from $\eta=2$ extra capacity. Q-learning and DP agree on the two most visited
-states and differ only in lightly loaded ones, where almost any allocation clears the
-congestion.
+The learned policies (full table in the repository) send capacity to the small, congested
+servers: in the most common state $(2,2,2)$ both Q-learning and DP choose $(2,2,0)$, since
+the large server gains the least from $\eta=2$ extra capacity. They differ only in lightly
+loaded states, where almost any allocation clears the congestion.
 
 \subsection{Number of users and server heterogeneity}\label{sec:extra}
-Two questions remain from the results above. Is the small price of anarchy a property of
+Two questions planned in the proposal remain. Is the small price of anarchy a property of
 our particular setting, and does the threshold rule's lead under strategic users depend on
-how unequal the servers are? Both were planned in the proposal. We repeat the selfish-user
+how unequal the servers are? We repeat the selfish-user
 experiment (Q-learning with 3{,}000 episodes and 3 seeds, as in the other sweeps) for
 $N\in\{6,9,12,15,18\}$, and for three server sets with the same total capacity of 20 but
 different spreads (Table~\ref{tab:extra}, Figure~\ref{fig:extra}). The manager still observes
@@ -490,8 +490,8 @@ and for equal or very unequal servers: in this model, the main source of delay i
 too little capacity, not selfish behaviour.
 
 \paragraph{Code and reproducibility.} All results in this report are produced by
-\texttt{experiments/run\_all.py} and \texttt{experiments/run\_extra.py}, followed by
-\texttt{make\_figures.py} and \texttt{make\_figures\_extra.py} (fixed seeds) in our repository: \url{https://github.com/kus-coded/compute-scheduling-rl}.
+\texttt{experiments/run\_all.py} (and \texttt{run\_all.py -{}-extra} for
+Section~\ref{sec:extra}), followed by \texttt{experiments/make\_figures.py} (fixed seeds) in our repository: \url{https://github.com/kus-coded/compute-scheduling-rl}.
 
 {\small
 \setlength{\bibsep}{1pt}

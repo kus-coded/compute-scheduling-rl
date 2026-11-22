@@ -1,17 +1,3 @@
-"""Resource-manager policies.
-
-Learning / planning agents
-  * QLearningAgent  - tabular Q-learning with epsilon-greedy exploration (Sec 7).
-  * DPAgent         - model-based dynamic programming: P(x'|x,d) and R(x,d) are
-                      estimated from exploration data, then value iteration.
-Baselines
-  * NoAlloc         - never allocate extra capacity (d = 0).
-  * Uniform         - always spend the full budget, spread evenly.
-  * Threshold       - state-based heuristic: give units to the most congested
-                      servers (level 2 first, then level 1), smallest capacity first.
-  * MyopicOracle    - observes exact loads (not just the discrete state) and picks
-                      the action maximising the immediate reward. Reference only.
-"""
 from __future__ import annotations
 
 import numpy as np
@@ -42,7 +28,7 @@ class QLearningAgent:
     def update(self, s, a, r, s2, done):
         target = r if done else r + self.gamma * self.Q[s2].max()
         self.visits[s, a] += 1
-        if self.alpha == "visit":       # alpha_n = n(s,a)^-omega (Robbins-Monro), floored
+        if self.alpha == "visit":
             alpha = max(self.alpha_min, self.visits[s, a] ** -self.omega)
         else:
             alpha = self.alpha
@@ -70,7 +56,6 @@ class QLearningAgent:
 
 
 class DPAgent:
-    """Certainty-equivalent DP: estimate the MDP from data, then value iteration."""
 
     def __init__(self, nS, nA, gamma=0.95):
         self.nS, self.nA, self.gamma = nS, nA, gamma
@@ -92,7 +77,7 @@ class DPAgent:
         self.n_sa = n
         self.R = np.where(n > 0, rsum / np.maximum(n, 1), rsum[n > 0].min() if (n > 0).any() else 0)
         P = counts / np.maximum(n[..., None], 1)
-        P[n == 0] = 1.0 / self.nS                    # unseen (s,a): uniform
+        P[n == 0] = 1.0 / self.nS
         self.P = P
         return self
 
@@ -133,7 +118,7 @@ class Uniform:
     def __init__(self, env):
         K, B = env.K, env.cfg.B
         d = [B // K] * K
-        for j in np.argsort(env.C)[: B - sum(d)]:     # remainder to smallest servers
+        for j in np.argsort(env.C)[: B - sum(d)]:
             d[j] += 1
         self.a = _action_lookup(env)[tuple(d)]
 
@@ -151,7 +136,6 @@ class Threshold:
     def policy(self, x, env=None):
         d = np.zeros(self.K, dtype=int)
         budget = self.B
-        # level-2 servers get 2 units, then level-1 servers get 1 unit
         for lvl, units in ((2, 2), (1, 1)):
             for j in sorted(np.flatnonzero(x == lvl), key=lambda j: self.C[j]):
                 give = min(units, budget)
@@ -172,7 +156,6 @@ class MyopicOracle:
 
 
 def evaluate(env: CongestionEnv, agent, n_episodes=200, seed_offset=10_000_000):
-    """Run greedy policy with common random numbers; return per-episode metrics."""
     G_all, delay_all, units_all = [], [], []
     for ep in range(n_episodes):
         x = env.reset(seed=seed_offset + ep)
